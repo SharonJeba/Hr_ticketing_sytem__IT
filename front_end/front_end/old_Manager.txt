@@ -1,0 +1,628 @@
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import 'bootstrap/dist/css/bootstrap.min.css';
+
+const ManagerDashboard = () => {
+  const [tickets, setTickets] = useState([]);
+  const [error, setError] = useState('');
+  const [filterType, setFilterType] = useState('All');
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assignData, setAssignData] = useState({ leave_id: null, hr_email: '' });
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewHrDetails, setViewHrDetails] = useState({ name: '', email: '' });
+  const [assignedTickets, setAssignedTickets] = useState({});
+  const [hrEmails, setHrEmails] = useState([]);
+  const navigate = useNavigate();
+
+  // Map leave types
+  const leaveTypeMap = {
+    1: 'Emergency Leave',
+    2: 'Sick Leave',
+    3: 'Planned Leave',
+  };
+
+  // Fetch tickets
+  const fetchTickets = async (leaveType = null) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        navigate('/login');
+        return;
+      }
+      const payload = leaveType ? { leave_type: leaveType } : {};
+      const response = await axios.post('http://127.0.0.1:8000/api/manager/view', payload, {
+        headers: { Authorization: token },
+      });
+      console.log('Fetch Tickets Response:', response.data);
+      
+      let ticketData = [];
+      let newAssignedTickets = {};
+      if (leaveType) {
+        ticketData = response.data[`${leaveTypeMap[leaveType]}`] || [];
+      } else {
+        ticketData = response.data.tickets_data || [];
+        // Process hr_data_show for HR details
+        const hrDataShow = response.data.hr_data_show || [];
+        console.log('HR Data Show:', hrDataShow);
+        hrDataShow.forEach((hr) => {
+          const ticketId = hr.hr_ticket;
+          newAssignedTickets[ticketId] = {
+            name: hr.hrname || 'Unknown',
+            email: hr.hremail || 'Unknown'
+          };
+        });
+      }
+      
+      console.log('Processed Ticket Data:', ticketData);
+      console.log('Initial Assigned Tickets:', newAssignedTickets);
+      setTickets(ticketData);
+      setAssignedTickets(newAssignedTickets);
+      setError('');
+    } catch (err) {
+      console.error('Fetch Tickets Error:', err.response);
+      setError(err.response?.data?.detail || 'Failed to fetch tickets');
+      if (err.response?.status === 401) {
+        navigate('/login');
+      }
+    }
+  };
+
+  // Fetch HR emails
+  const fetchHrEmails = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        navigate('/login');
+        return;
+      }
+      const response = await axios.post('http://127.0.0.1:8000/api/manager/view', { leave_type: '' }, {
+        headers: { Authorization: token },
+      });
+      console.log('Fetch HR Emails Response:', response.data);
+      const hrDetails = response.data.hr_details || [];
+      setHrEmails(hrDetails);
+    } catch (err) {
+      console.error('Fetch HR Emails Error:', err.response);
+      setError(err.response?.data?.detail || 'Failed to fetch HR details');
+    }
+  };
+
+  // Fetch tickets and HR emails on mount
+  useEffect(() => {
+    fetchTickets();
+    fetchHrEmails();
+  }, []);
+
+  // Debug success modal state
+  useEffect(() => {
+    console.log('showSuccessModal:', showSuccessModal, 'successMessage:', successMessage);
+  }, [showSuccessModal, successMessage]);
+
+  // Debug assignedTickets changes
+  useEffect(() => {
+    console.log('Current Assigned Tickets:', assignedTickets);
+  }, [assignedTickets]);
+
+  // Handle filter change
+  const handleFilterChange = (e) => {
+    const value = e.target.value;
+    setFilterType(value);
+    if (value === 'All') {
+      fetchTickets();
+    } else {
+      const leaveTypeId = Object.keys(leaveTypeMap).find(key => leaveTypeMap[key] === value);
+      fetchTickets(leaveTypeId);
+    }
+  };
+
+  // Handle assign input change
+  const handleAssignInputChange = (e) => {
+    setAssignData({ ...assignData, hr_email: e.target.value });
+  };
+
+  // Open assign modal
+  const openAssignModal = (leave_id) => {
+    setAssignData({ leave_id, hr_email: hrEmails.length > 0 ? hrEmails[0].email : '' });
+    setShowAssignModal(true);
+  };
+
+  // Open view HR modal
+  const openViewModal = (leave_id) => {
+    const hrDetails = assignedTickets[leave_id] || { name: 'Unknown', email: 'Unknown' };
+    setViewHrDetails(hrDetails);
+    setShowViewModal(true);
+  };
+
+  // Assign ticket to HR
+  const handleAssignTicket = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const token = localStorage.getItem('token');
+      const payload = {
+        hr_email: assignData.hr_email,
+        leave_id: assignData.leave_id,
+      };
+      console.log('Assign Payload:', payload);
+      const response = await axios.post('http://127.0.0.1:8000/api/manager/assign', payload, {
+        headers: { Authorization: token },
+      });
+      console.log('Assign Response:', response.data);
+      setShowAssignModal(false);
+      setSuccessMessage(`Ticket assigned to ${response.data.assigned_to}`);
+      setShowSuccessModal(true);
+      setAssignedTickets({
+        ...assignedTickets,
+        [assignData.leave_id]: {
+          name: response.data.assigned_to,
+          email: assignData.hr_email
+        },
+      });
+      await fetchTickets(filterType === 'All' ? null : Object.keys(leaveTypeMap).find(key => leaveTypeMap[key] === filterType));
+    } catch (err) {
+      console.error('Assign Error:', err.response);
+      setError(err.response?.data?.detail || 'Failed to assign ticket');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="dashboard-container">
+      <style>
+        {`
+          .dashboard-container {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #6b7280, #1e3a8a);
+            padding: 2rem;
+          }
+
+          .dashboard-card {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+            max-width: 1200px;
+            margin: 0 auto;
+            animation: fadeIn 0.5s ease-in;
+          }
+
+          @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+
+          h2 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #1e3a8a;
+            text-align: center;
+            margin-bottom: 1.5rem;
+          }
+
+          .alert-danger {
+            font-size: 0.9rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+            background: #fee2e2;
+            color: #dc2626;
+            border: 1px solid #dc2626;
+            text-align: center;
+            margin-bottom: 1.5rem;
+          }
+
+          .table {
+            background: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+          }
+
+          .table th, .table td {
+            padding: 1rem;
+            vertical-align: middle;
+          }
+
+          .table th {
+            background: #f1f5f9;
+            color: #1e3a8a;
+            font-weight: 600;
+          }
+
+          .table tbody tr.pending {
+            background: #e0f7fa;
+          }
+
+          .table tbody tr.in-progress {
+            background: #ffcc80;
+          }
+
+          .table tbody tr.accepted {
+            background: #c8e6c9;
+          }
+
+          .table tbody tr:hover {
+            filter: brightness(95%);
+            transition: filter 0.2s ease;
+          }
+
+          .btn-primary, .btn-secondary, .btn-success, .btn-danger, .btn-info, .btn-assigned {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+          }
+
+          .btn-primary {
+            background: linear-gradient(90deg, #3b82f6, #1e40af);
+            border: none;
+          }
+
+          .btn-primary:hover {
+            background: linear-gradient(90deg, #1e40af, #1e3a8a);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(59, 130, 246, 0.3);
+          }
+
+          .btn-primary:disabled {
+            background: linear-gradient(90deg, #93c5fd, #6b7280);
+            cursor: not-allowed;
+          }
+
+          .btn-danger {
+            background: linear-gradient(90deg, #ef4444, #b91c1c);
+            border: none;
+          }
+
+          .btn-danger:disabled {
+            background: linear-gradient(90deg, #f87171, #dc2626);
+            cursor: not-allowed;
+          }
+
+          .btn-secondary {
+            background: linear-gradient(90deg, #6b7280, #4b5563);
+            border: none;
+          }
+
+          .btn-secondary:hover {
+            background: linear-gradient(90deg, #4b5563, #374151);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(107, 114, 128, 0.3);
+          }
+
+          .btn-success {
+            background: linear-gradient(90deg, #10b981, #047857);
+            border: none;
+          }
+
+          .btn-success:hover {
+            background: linear-gradient(90deg, #047857, #065f46);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(16, 185, 129, 0.3);
+          }
+
+          .btn-info {
+            background: linear-gradient(90deg, #06b6d4, #0891b2);
+            border: none;
+            padding: 0.3rem 0.6rem;
+            font-size: 0.8rem;
+          }
+
+          .btn-info:hover {
+            background: linear-gradient(90deg, #0891b2, #0e7490);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(6, 182, 212, 0.3);
+          }
+
+          .btn-assigned {
+            background: linear-gradient(90deg, #9ca3af, #6b7280);
+            border: none;
+            cursor: not-allowed;
+          }
+
+          .modal {
+            z-index: 1050;
+          }
+
+          .modal-content {
+            border-radius: 10px;
+            background: #ffffff;
+          }
+
+          .modal-header {
+            background: #f1f5f9;
+            border-bottom: none;
+          }
+
+          .modal-title {
+            color: #1e3a8a;
+            font-weight: 600;
+          }
+
+          .form-control, .form-select {
+            border-radius: 5px;
+            padding: 0.75rem;
+            font-size: 0.9rem;
+            border: 1px solid #d1d5db;
+            transition: all 0.3s ease;
+          }
+
+          .form-control:hover, .form-select:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 0 5px rgba(59, 130, 246, 0.2);
+          }
+
+          .form-control:focus, .form-select:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 8px rgba(37, 99, 235, 0.3);
+            outline: none;
+          }
+
+          .form-label {
+            font-size: 0.9rem;
+            color: #374151;
+            font-weight: 500;
+          }
+
+          .modal-body p {
+            font-size: 1rem;
+            color: #374151;
+            text-align: center;
+          }
+
+          .filter-container {
+            margin-bottom: 1rem;
+          }
+
+          .actions-container {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .actions-container .btn {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.85rem;
+            min-width: 80px;
+          }
+
+          .actions-container .btn-info {
+            min-width: 60px;
+          }
+
+          .table td.actions-column {
+            min-width: 180px;
+            text-align: center;
+          }
+
+          @media (max-width: 768px) {
+            .dashboard-card {
+              padding: 1.5rem;
+            }
+
+            h2 {
+              font-size: 1.8rem;
+            }
+
+            .table th, .table td {
+              padding: 0.75rem;
+              font-size: 0.85rem;
+            }
+
+            .table td.actions-column {
+              min-width: 140px;
+            }
+
+            .actions-container .btn {
+              padding: 0.3rem 0.6rem;
+              font-size: 0.8rem;
+              min-width: 70px;
+            }
+
+            .actions-container .btn-info {
+              min-width: 50px;
+            }
+          }
+        `}
+      </style>
+      <div className="dashboard-card">
+        <h2>Manager Dashboard - Leave Requests</h2>
+        {error && <div className="alert alert-danger">{error}</div>}
+        <div className="dashboard-content">
+          {/* Filter Dropdown */}
+          <div className="filter-container">
+            <label className="form-label me-2">Filter by Leave Type:</label>
+            <select
+              className="form-select d-inline-block w-auto"
+              value={filterType}
+              onChange={handleFilterChange}
+            >
+              <option value="All">All</option>
+              <option value="Emergency Leave">Emergency Leave</option>
+              <option value="Sick Leave">Sick Leave</option>
+              <option value="Planned Leave">Planned Leave</option>
+            </select>
+          </div>
+
+          {/* Tickets Table */}
+          {tickets.length > 0 ? (
+            <table className="table table-bordered">
+              <thead>
+                <tr>
+                  <th>Employee Name</th>
+                  <th>Leave Type</th>
+                  <th>Status</th>
+                  <th>Reason</th>
+                  <th>Start Date</th>
+                  <th>End Date</th>
+                  <th>Applied At</th>
+                  <th>TL Approval</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tickets.map((ticket, index) => (
+                  <tr key={ticket.id || index} className={ticket.status.toLowerCase().replace(' ', '-')}>
+                    <td>{ticket.name || '-'}</td>
+                    <td>{ticket.leave_type || '-'}</td>
+                    <td>{ticket.status || 'Pending'}</td>
+                    <td>{ticket.reason || '-'}</td>
+                    <td>{ticket.start_date || '-'}</td>
+                    <td>{ticket.end_date || '-'}</td>
+                    <td>{ticket.applied_at || '-'}</td>
+                    <td>{ticket.tl_approval || 'Pending'}</td>
+                    <td className="actions-column">
+                      <div className="actions-container">
+                        <button
+                          className={`btn btn-sm ${assignedTickets[ticket.id] ? 'btn-assigned' : 'btn-primary'}`}
+                          onClick={() => openAssignModal(ticket.id)}
+                          disabled={!!assignedTickets[ticket.id]}
+                        >
+                          {assignedTickets[ticket.id] ? 'Assigned' : 'Assign to HR'}
+                        </button>
+                        {assignedTickets[ticket.id] && (
+                          <button
+                            className="btn btn-info btn-sm"
+                            onClick={() => openViewModal(ticket.id)}
+                          >
+                            View
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p>No leave requests found.</p>
+          )}
+        </div>
+
+        {/* Assign to HR Modal */}
+        <div className={`modal ${showAssignModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Assign Ticket to HR</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowAssignModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <div className="mb-3">
+                  <label className="form-label">Select HR</label>
+                  <select
+                    name="hr_email"
+                    className="form-select"
+                    value={assignData.hr_email}
+                    onChange={handleAssignInputChange}
+                    required
+                  >
+                    {hrEmails.length > 0 ? (
+                      hrEmails.map((hr, index) => (
+                        <option key={index} value={hr.email}>
+                          {hr.name ? `${hr.name} (${hr.email})` : hr.email}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">No HRs available</option>
+                    )}
+                  </select>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowAssignModal(false)}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleAssignTicket}
+                  disabled={isSubmitting || !assignData.hr_email}
+                >
+                  Assign
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Success Modal */}
+        <div className={`modal ${showSuccessModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Success</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => {
+                    setShowSuccessModal(false);
+                    setSuccessMessage('');
+                  }}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>{successMessage}</p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-success"
+                  onClick={() => {
+                    setShowSuccessModal(false);
+                    setSuccessMessage('');
+                  }}
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* View HR Details Modal */}
+        <div className={`modal ${showViewModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Assigned HR Details</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowViewModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p><strong>Name:</strong> {viewHrDetails.name}</p>
+                <p><strong>Email:</strong> {viewHrDetails.email}</p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowViewModal(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ManagerDashboard;

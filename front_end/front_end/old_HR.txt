@@ -1,0 +1,832 @@
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import 'bootstrap/dist/css/bootstrap.min.css';
+
+const HRDashboard = () => {
+  const [hrDetails, setHrDetails] = useState([]);
+  const [error, setError] = useState('');
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showRejectConfirmModal, setShowRejectConfirmModal] = useState(false);
+  const [showApproveConfirmModal, setShowApproveConfirmModal] = useState(false);
+  const [leaveTypeFilter, setLeaveTypeFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const navigate = useNavigate();
+
+  // Fetch HR details
+  const fetchHrDetails = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        navigate('/login');
+        return;
+      }
+      const response = await axios.get('http://127.0.0.1:8000/api/hr/view', {
+        headers: { Authorization: token },
+      });
+      console.log('Fetch HR Details Response:', response.data);
+      setHrDetails(response.data.hr_details || []);
+      setError('');
+    } catch (err) {
+      console.error('Fetch HR Details Error:', err.response);
+      const errorMsg = err.response?.status === 404 
+        ? 'HR List endpoint not found. Please check backend URL configuration.'
+        : err.response?.data?.detail || 'Failed to fetch HR details';
+      setError(errorMsg);
+      if (err.response?.status === 401) {
+        navigate('/login');
+      }
+    }
+  };
+
+  // Fetch HR details on mount
+  useEffect(() => {
+    fetchHrDetails();
+  }, []);
+
+  // Debug hrDetails, success modal, and filter state
+  useEffect(() => {
+    console.log('Current hrDetails:', hrDetails);
+    console.log('showSuccessModal:', showSuccessModal, 'successMessage:', successMessage);
+    console.log('leaveTypeFilter:', leaveTypeFilter);
+    console.log('statusFilter:', statusFilter);
+  }, [hrDetails, showSuccessModal, successMessage, leaveTypeFilter, statusFilter]);
+
+  // Open view ticket modal
+  const openViewModal = (ticket) => {
+    console.log('Selected Ticket:', { Status: ticket.Status, TL_Approval_Status: ticket.TL_Approval_Status });
+    setSelectedTicket(ticket);
+    setShowViewModal(true);
+  };
+
+  // Handle status change (Forward to TL, Reject, Approve/Reject after TL approval)
+  const handleStatusChange = async (action, isTlStatus = false) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const token = localStorage.getItem('token');
+      const payload = {
+        id: selectedTicket.ticket_id,
+        [isTlStatus ? 'tl_status' : 'status']: action,
+      };
+      console.log('Status Change Payload:', payload);
+      const response = await axios.post('http://127.0.0.1:8000/api/hr/status', payload, {
+        headers: { Authorization: token },
+      });
+      console.log('Status Change Response:', response.data);
+      setShowViewModal(false);
+      setShowRejectConfirmModal(false);
+      setShowApproveConfirmModal(false);
+      setSuccessMessage(
+        response.data.show || 
+        (action === 'Accept' ? 'Ticket forwarded to TL' : 
+         action === 'Declined' ? 'Ticket rejected' : 
+         action === 'Accepted' ? 'Ticket approved' : 'Ticket rejected')
+      );
+      setShowSuccessModal(true);
+      await fetchHrDetails(); // Refresh tickets
+    } catch (err) {
+      console.error('Status Change Error:', err.response);
+      setError(err.response?.data?.detail || 'Failed to update ticket status');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle approve button click (for TL-approved tickets)
+  const handleApproveClick = () => {
+    console.log('Approve button clicked for ticket:', selectedTicket.ticket_id);
+    setShowApproveConfirmModal(true);
+  };
+
+  // Handle reject button click
+  const handleRejectClick = () => {
+    console.log('Reject button clicked for ticket:', selectedTicket.ticket_id);
+    setShowRejectConfirmModal(true);
+  };
+
+  // Filter tickets by leave type and status
+  const filteredTickets = hrDetails.filter(ticket => {
+    const matchesLeaveType = leaveTypeFilter === 'All' || ticket.Leave_type.toLowerCase() === leaveTypeFilter.toLowerCase();
+    const matchesStatus = statusFilter === 'All' || ticket.Status.toLowerCase() === statusFilter.toLowerCase();
+    return matchesLeaveType && matchesStatus;
+  });
+
+  // Get unique HR info
+  const hrInfo = hrDetails.length > 0 ? {
+    name: hrDetails[0].Hr_name || 'Unknown',
+    role: hrDetails[0].Hr_role || 'HR',
+  } : { name: 'Unknown', role: 'HR' };
+
+  return (
+    <div className="dashboard-container">
+      <style>
+        {`
+          .dashboard-container {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #6b7280, #1e3a8a);
+            padding: 2rem;
+          }
+
+          .dashboard-container .dashboard-card {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+            max-width: 1200px;
+            margin: 0 auto;
+            animation: fadeIn 0.5s ease-in;
+          }
+
+          @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+
+          .dashboard-container .hr-header {
+            background: #f1f5f9;
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+          }
+
+          .dashboard-container .hr-header h3 {
+            font-size: 1.8rem;
+            color: #1e3a8a;
+            margin: 0;
+          }
+
+          .dashboard-container .hr-header p {
+            font-size: 1rem;
+            color: #374151;
+            margin: 0;
+          }
+
+          .dashboard-container h2 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #1e3a8a;
+            text-align: center;
+            margin-bottom: 1.5rem;
+          }
+
+          .dashboard-container .alert-danger {
+            font-size: 0.9rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+            background: #fee2e2;
+            color: #dc2626;
+            border: 1px solid #dc2626;
+            text-align: center;
+            margin-bottom: 1.5rem;
+          }
+
+          .dashboard-container .table {
+            background: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+          }
+
+          .dashboard-container .table th, 
+          .dashboard-container .table td {
+            padding: 1rem;
+            vertical-align: middle;
+          }
+
+          .dashboard-container .table th {
+            background: #f1f5f9;
+            color: #1e3a8a;
+            font-weight: 600;
+          }
+
+          .dashboard-container .table tbody tr.pending {
+            background: #e0f7fa;
+          }
+
+          .dashboard-container .table tbody tr.in-progress {
+            background: #ffcc80;
+          }
+
+          .dashboard-container .table tbody tr.accepted {
+            background: #c8e6c9;
+          }
+
+          .dashboard-container .table tbody tr.rejected {
+            background: #fee2e2;
+          }
+
+          .dashboard-container .table tbody tr:hover {
+            filter: brightness(95%);
+            transition: filter 0.2s ease;
+          }
+
+          .dashboard-container .btn-primary, 
+          .dashboard-container .btn-secondary, 
+          .dashboard-container .btn-success, 
+          .dashboard-container .btn-danger, 
+          .dashboard-container .btn-info, 
+          .dashboard-container .btn-assigned, 
+          .dashboard-container .btn-tl-approved, 
+          .dashboard-container .btn-ticket-approved, 
+          .dashboard-container .btn-rejected, 
+          .dashboard-container .btn-status-rejected {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+          }
+
+          .dashboard-container .btn-primary {
+            background: linear-gradient(90deg, #3b82f6, #1e40af) !important;
+            color: #ffffff !important;
+            border: none;
+          }
+
+          .dashboard-container .btn-primary:hover {
+            background: linear-gradient(90deg, #1e40af, #1e3a8a) !important;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(59, 130, 246, 0.3);
+          }
+
+          .dashboard-container .btn-secondary {
+            background: linear-gradient(90deg, #6b7280, #4b5563) !important;
+            color: #ffffff !important;
+            border: none;
+          }
+
+          .dashboard-container .btn-secondary:hover {
+            background: linear-gradient(90deg, #4b5563, #374151) !important;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(107, 114, 128, 0.3);
+          }
+
+          .dashboard-container .btn-success {
+            background: linear-gradient(90deg, #10b981, #047857) !important;
+            color: #ffffff !important;
+            border: none;
+          }
+
+          .dashboard-container .btn-success:hover {
+            background: linear-gradient(90deg, #047857, #065f46) !important;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(16, 185, 129, 0.3);
+          }
+
+          .dashboard-container .btn-success.disabled {
+            background: #d1d5db !important;
+            color: #6b7280 !important;
+            cursor: not-allowed;
+            opacity: 0.6;
+          }
+
+          .dashboard-container .btn-danger {
+            background: linear-gradient(90deg, #ef4444, #b91c1c) !important;
+            color: #ffffff !important;
+            border: none;
+          }
+
+          .dashboard-container .btn-danger:hover {
+            background: linear-gradient(90deg, #b91c1c, #991b1b) !important;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(239, 68, 68, 0.3);
+          }
+
+          .dashboard-container .btn-danger.disabled {
+            background: #d1d5db !important;
+            color: #6b7280 !important;
+            cursor: not-allowed;
+            opacity: 0.6;
+          }
+
+          .dashboard-container .btn-info {
+            background: linear-gradient(90deg, #06b6d4, #0891b2) !important;
+            color: #ffffff !important;
+            border: none;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.85rem;
+          }
+
+          .dashboard-container .btn-info:hover {
+            background: linear-gradient(90deg, #0891b2, #0e7490) !important;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(6, 182, 212, 0.3);
+          }
+
+          .dashboard-container .btn-assigned {
+            background: #ffdab9 !important;
+            color: #8b4513 !important;
+            border: none;
+            cursor: not-allowed;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.85rem;
+          }
+
+          .dashboard-container .btn-tl-approved {
+            background: #86efac !important;
+            color: #065f46 !important;
+            border: none;
+            cursor: not-allowed;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.85rem;
+          }
+
+          .dashboard-container .btn-ticket-approved {
+            background: #008000 !important;
+            color: #ffffff !important;
+            border: none;
+            cursor: not-allowed;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.85rem;
+          }
+
+          .dashboard-container .btn-rejected {
+            background: #fca5a5 !important;
+            color: #7f1d1d !important;
+            border: none;
+            cursor: not-allowed;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.85rem;
+          }
+
+          .dashboard-container .btn-status-rejected {
+            background:#ff0000 !important;
+            color: #ffffff !important;
+            border: none;
+            cursor: not-allowed;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.85rem;
+          }
+
+          .dashboard-container .filter-container {
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+          }
+
+          .dashboard-container .filter-container label {
+            font-size: 1rem;
+            color: #1e3a8a;
+            font-weight: 600;
+          }
+
+          .dashboard-container .filter-container select {
+            padding: 0.5rem;
+            font-size: 0.9rem;
+            border-radius: 5px;
+            border: 1px solid #d1d5db;
+            background: #f1f5f9;
+            color: #374151;
+            width: 200px;
+          }
+
+          .dashboard-container .filter-container select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 5px rgba(59, 130, 246, 0.3);
+          }
+
+          .dashboard-container .modal {
+            z-index: 1050;
+          }
+
+          .dashboard-container .modal-content {
+            border-radius: 10px;
+            background: #ffffff;
+          }
+
+          .dashboard-container .modal-header {
+            background: #f1f5f9;
+            border-bottom: none;
+          }
+
+          .dashboard-container .modal-title {
+            color: #1e3a8a;
+            font-weight: 600;
+          }
+
+          .dashboard-container .modal-body p {
+            font-size: 1rem;
+            color: #374151;
+            margin-bottom: 0.5rem;
+          }
+
+          .dashboard-container .modal-footer {
+            display: flex;
+            justify-content: space-between;
+          }
+
+          .dashboard-container .actions-container {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .dashboard-container .table td.actions-column {
+            min-width: 220px;
+            text-align: center;
+          }
+
+          @media (max-width: 768px) {
+            .dashboard-container .dashboard-card {
+              padding: 1.5rem;
+            }
+
+            .dashboard-container h2 {
+              font-size: 1.8rem;
+            }
+
+            .dashboard-container .hr-header h3 {
+              font-size: 1.5rem;
+            }
+
+            .dashboard-container .table th, 
+            .dashboard-container .table td {
+              padding: 0.75rem;
+              font-size: 0.85rem;
+            }
+
+            .dashboard-container .table td.actions-column {
+              min-width: 160px;
+            }
+
+            .dashboard-container .btn-info, 
+            .dashboard-container .btn-assigned, 
+            .dashboard-container .btn-tl-approved, 
+            .dashboard-container .btn-ticket-approved, 
+            .dashboard-container .btn-rejected, 
+            .dashboard-container .btn-status-rejected {
+              padding: 0.3rem 0.6rem;
+              font-size: 0.8rem;
+            }
+
+            .dashboard-container .filter-container {
+              flex-direction: column;
+              align-items: flex-start;
+            }
+
+            .dashboard-container .filter-container select {
+              width: 100%;
+            }
+          }
+        `}
+      </style>
+      <div className="dashboard-card">
+        <h2>HR Dashboard - Assigned Leave Requests</h2>
+        {error && <div className="alert alert-danger">{error}</div>}
+        <div className="hr-header">
+          <h3>{hrInfo.name}</h3>
+          <p>Role: {hrInfo.role}</p>
+        </div>
+        <div className="dashboard-content">
+          {/* Filter Dropdowns */}
+          <div className="filter-container">
+            <label htmlFor="leaveTypeFilter">Filter by Leave Type:</label>
+            <select
+              id="leaveTypeFilter"
+              value={leaveTypeFilter}
+              onChange={(e) => setLeaveTypeFilter(e.target.value)}
+            >
+              <option value="All">All</option>
+              <option value="PlannedLeave">Planned Leave</option>
+              <option value="SickLeave">Sick Leave</option>
+              <option value="EmergencyLeave">Emergency Leave</option>
+            </select>
+            <label htmlFor="statusFilter">Filter by Status:</label>
+            <select
+              id="statusFilter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="All">All</option>
+              <option value="Pending">Pending</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Accepted">Accepted</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+          </div>
+          {/* Tickets Table */}
+          {filteredTickets.length > 0 ? (
+            <table className="table table-bordered">
+              <thead>
+                <tr>
+                  <th>Requester Name</th>
+                  <th>Leave Type</th>
+                  <th>Applied At</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTickets.map((ticket, index) => (
+                  <tr key={ticket.ticket_id || index} className={ticket.Status.toLowerCase().replace(' ', '-')}>
+                    <td>{ticket.Requester_name || '-'}</td>
+                    <td>{ticket.Leave_type || '-'}</td>
+                    <td>{ticket.Applied_at || '-'}</td>
+                    <td className="actions-column">
+                      <div className="actions-container">
+                        <button
+                          className="btn btn-info btn-sm"
+                          onClick={() => openViewModal(ticket)}
+                        >
+                          View Ticket
+                        </button>
+                        {ticket.TL_Approval_Status === 'Approved' && ticket.Status.toLowerCase() !== 'accepted' && ticket.Status.toLowerCase() !== 'rejected' && (
+                          <button
+                            className="btn btn-tl-approved btn-sm"
+                            disabled
+                          >
+                            TL-Approved
+                          </button>
+                        )}
+                        {ticket.TL_Approval_Status === 'Rejected' && ticket.Status.toLowerCase() === 'in progress' && (
+                          <button
+                            className="btn btn-rejected btn-sm"
+                            disabled
+                          >
+                            TL-Rejected
+                          </button>
+                        )}
+                        {ticket.Status.toLowerCase() === 'in progress' && ticket.TL_Approval_Status !== 'Approved' && ticket.TL_Approval_Status !== 'Rejected' && (
+                          <button
+                            className="btn btn-assigned btn-sm"
+                            disabled
+                          >
+                            Ticket Forwarded
+                          </button>
+                        )}
+                        {ticket.Status.toLowerCase() === 'accepted' && (
+                          <button
+                            className="btn btn-ticket-approved btn-sm"
+                            disabled
+                          >
+                            Ticket Approved
+                          </button>
+                        )}
+                        {ticket.Status.toLowerCase() === 'rejected' && (
+                          <button
+                            className="btn btn-status-rejected btn-sm"
+                            disabled
+                          >
+                            Rejected
+                          </button>
+                        )}
+                        {ticket.Status.toLowerCase() === 'rejected-hr' && (
+                          <button
+                            className="btn btn-status-rejected btn-sm"
+                            disabled
+                          >
+                            Rejected
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p>No assigned leave requests found for the selected filters.</p>
+          )}
+        </div>
+
+        {/* View Ticket Modal */}
+        <div className={`modal ${showViewModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog modal-lg">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Ticket Details</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowViewModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                {selectedTicket && (
+                  <>
+                    <p><strong>Requester Name:</strong> {selectedTicket.Requester_name || '-'}</p>
+                    <p><strong>Requester Email:</strong> {selectedTicket.Requester_email || '-'}</p>
+                    <p><strong>Leave Type:</strong> {selectedTicket.Leave_type || '-'}</p>
+                    <p><strong>Reason:</strong> {selectedTicket.Leave_reason || '-'}</p>
+                    <p><strong>Start Date:</strong> {selectedTicket.Start_date || '-'}</p>
+                    <p><strong>End Date:</strong> {selectedTicket.End_date || '-'}</p>
+                    <p><strong>Status:</strong> {selectedTicket.Status || 'Pending'}</p>
+                    <p><strong>TL Approval Status:</strong> {selectedTicket.TL_Approval_Status || '-'}</p>
+                    <p><strong>Applied At:</strong> {selectedTicket.Applied_at || '-'}</p>
+                  </>
+                )}
+              </div>
+              <div className="modal-footer">
+                {selectedTicket?.TL_Approval_Status === 'Rejected' && selectedTicket?.Status.toLowerCase() === 'in progress' ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-rejected disabled"
+                      disabled
+                    >
+                      TL-Rejected
+                    </button>
+                  </>
+                ) : selectedTicket?.TL_Approval_Status === 'Approved' && selectedTicket?.Status.toLowerCase() !== 'accepted' && selectedTicket?.Status.toLowerCase() !== 'rejected' ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-success"
+                      onClick={handleApproveClick}
+                      disabled={isSubmitting}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={handleRejectClick}
+                      disabled={isSubmitting}
+                    >
+                      Reject
+                    </button>
+                  </>
+                ) : selectedTicket?.Status.toLowerCase() === 'in progress' ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-secondary disabled"
+                      disabled
+                    >
+                      Waiting for TL Approval
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary disabled"
+                      disabled
+                    >
+                      Reject
+                    </button>
+                  </>
+                ) : selectedTicket?.Status.toLowerCase() === 'accepted' || selectedTicket?.Status.toLowerCase() === 'rejected' ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-success disabled"
+                      disabled
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger disabled"
+                      disabled
+                    >
+                      Reject
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-success"
+                      onClick={() => handleStatusChange('Accept')}
+                      disabled={isSubmitting || selectedTicket?.Status.toLowerCase() !== 'pending'}
+                    >
+                      Forward to TL
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={handleRejectClick}
+                      disabled={isSubmitting || selectedTicket?.Status.toLowerCase() !== 'pending'}
+                    >
+                      Reject
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowViewModal(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Approve Confirmation Modal */}
+        <div className={`modal ${showApproveConfirmModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Confirm Approval</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowApproveConfirmModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>Are you sure you want to approve this ticket?</p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-success"
+                  onClick={() => handleStatusChange('Accepted', true)}
+                >
+                  Confirm Approve
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowApproveConfirmModal(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Reject Confirmation Modal */}
+        <div className={`modal ${showRejectConfirmModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Confirm Rejection</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowRejectConfirmModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>Are you sure you want to reject this ticket?</p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={() => handleStatusChange(
+                    selectedTicket?.TL_Approval_Status === 'Approved' ? 'Rejected' : 'Declined',
+                    selectedTicket?.TL_Approval_Status === 'Approved'
+                  )}
+                >
+                  Confirm Reject
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowRejectConfirmModal(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Success Modal */}
+        <div className={`modal ${showSuccessModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Success</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => {
+                    setShowSuccessModal(false);
+                    setSuccessMessage('');
+                  }}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>{successMessage}</p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-success"
+                  onClick={() => {
+                    setShowSuccessModal(false);
+                    setSuccessMessage('');
+                  }}
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default HRDashboard;

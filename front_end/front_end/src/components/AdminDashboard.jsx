@@ -1,0 +1,799 @@
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import 'bootstrap/dist/css/bootstrap.min.css';
+
+const AdminDashboard = () => {
+  const [employees, setEmployees] = useState([]);
+  const [error, setError] = useState('');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showAddConfirmModal, setShowAddConfirmModal] = useState(false);
+  const [showAddSuccessModal, setShowAddSuccessModal] = useState(false);
+  const [showUpdateConfirmModal, setShowUpdateConfirmModal] = useState(false);
+  const [showUpdateSuccessModal, setShowUpdateSuccessModal] = useState(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [showDeleteSuccessModal, setShowDeleteSuccessModal] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [employeeToDelete, setEmployeeToDelete] = useState(null);
+  const [formData, setFormData] = useState({
+    email: '',
+    name: '',
+    role: '',
+    gender: '',
+    department: '',
+    password: '',
+  });
+  const navigate = useNavigate();
+
+  // Fetch all employees on component mount
+  useEffect(() => {
+    fetchEmployees();
+  }, []);
+
+  const fetchEmployees = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://127.0.0.1:8000/api/admin/reg', {
+        headers: { Authorization:  localStorage.getItem('token') },
+      });
+      setEmployees(response.data['data']);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to fetch employees');
+    }
+  };
+
+  // Handle input changes for form
+  const handleInputChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  // Add new employee
+  const handleAddEmployee = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const payload = {
+        ...formData,
+        gender: parseInt(formData.gender) || null,
+        department: parseInt(formData.department) || 1,
+      };
+      await axios.post('http://127.0.0.1:8000/api/admin/reg', payload, {
+        headers: { Authorization: token },
+      });
+      setShowAddConfirmModal(false);
+      setShowAddModal(false);
+      setFormData({ email: '', name: '', role: '', gender: '', department: '', password: '' });
+      fetchEmployees();
+      setShowAddSuccessModal(true);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to add employee');
+    }
+  };
+
+  // Update employee
+  const handleUpdateEmployee = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const payload = {
+        emp_email: selectedEmployee.email,
+        ...formData,
+        gender: parseInt(formData.gender) || null,
+        department: parseInt(formData.department) || 1,
+      };
+      await axios.put('http://127.0.0.1:8000/api/admin/crud', payload, {
+        headers: { Authorization: token },
+      });
+      setShowUpdateConfirmModal(false);
+      setShowUpdateModal(false);
+      setFormData({ email: '', name: '', role: '', gender: '', department: '', password: '' });
+      fetchEmployees();
+      setShowUpdateSuccessModal(true);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to update employee');
+    }
+  };
+
+  // Delete employee
+  const handleDeleteEmployee = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete('http://127.0.0.1:8000/api/admin/crud', {
+        headers: { Authorization: token },
+        data: { emp_email: employeeToDelete },
+      });
+      setShowDeleteConfirmModal(false);
+      fetchEmployees();
+      setShowDeleteSuccessModal(true);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to delete employee');
+    }
+  };
+
+  // Open update modal with employee data
+  const openUpdateModal = (employee) => {
+    setSelectedEmployee(employee);
+    setFormData({
+      email: employee.email || '',
+      name: employee.name || '',
+      role: employee.role || '',
+      gender: employee.gender?.toString() || '',
+      department: employee.department?.toString() || '',
+      password: '',
+    });
+    setShowUpdateModal(true);
+  };
+
+  // Open delete confirmation modal
+  const openDeleteConfirmModal = (email) => {
+    setEmployeeToDelete(email);
+    setShowDeleteConfirmModal(true);
+  };
+
+  return (
+    <div className="dashboard-container">
+      <style>
+        {`
+          .dashboard-container {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #6b7280, #1e3a8a);
+            padding: 2rem;
+          }
+
+          .dashboard-card {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+            max-width: 1200px;
+            margin: 0 auto;
+            animation: fadeIn 0.5s ease-in;
+          }
+
+          @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+
+          h2 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #1e3a8a;
+            text-align: center;
+            margin-bottom: 1.5rem;
+          }
+
+          .alert-danger {
+            font-size: 0.9rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+            background: #fee2e2;
+            color: #dc2626;
+            border: 1px solid #dc2626;
+            text-align: center;
+            margin-bottom: 1.5rem;
+          }
+
+          .table {
+            background: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+          }
+
+          .table th, .table td {
+            padding: 1rem;
+            vertical-align: middle;
+          }
+
+          .table th {
+            background: #f1f5f9;
+            color: #1e3a8a;
+            font-weight: 600;
+          }
+
+          .table tbody tr:hover {
+            background: #f9fafb;
+            transition: background 0.2s ease;
+          }
+
+          .btn-primary, .btn-danger, .btn-warning, .btn-secondary, .btn-success {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+          }
+
+          .btn-primary {
+            background: linear-gradient(90deg, #3b82f6, #1e40af);
+            border: none;
+          }
+
+          .btn-primary:hover {
+            background: linear-gradient(90deg, #1e40af, #1e3a8a);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(59, 130, 246, 0.3);
+          }
+
+          .btn-danger {
+            background: linear-gradient(90deg, #ef4444, #b91c1c);
+            border: none;
+          }
+
+          .btn-danger:hover {
+            background: linear-gradient(90deg, #b91c1c, #991b1b);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(239, 68, 68, 0.3);
+          }
+
+          .btn-warning {
+            background: linear-gradient(90deg, #f59e0b, #d97706);
+            border: none;
+            color: #fff;
+          }
+
+          .btn-warning:hover {
+            background: linear-gradient(90deg, #d97706, #b45309);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(245, 158, 11, 0.3);
+          }
+
+          .btn-secondary {
+            background: linear-gradient(90deg, #6b7280, #4b5563);
+            border: none;
+          }
+
+          .btn-secondary:hover {
+            background: linear-gradient(90deg, #4b5563, #374151);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(107, 114, 128, 0.3);
+          }
+
+          .btn-success {
+            background: linear-gradient(90deg, #10b981, #047857);
+            border: none;
+          }
+
+          .btn-success:hover {
+            background: linear-gradient(90deg, #047857, #065f46);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(16, 185, 129, 0.3);
+          }
+
+          .modal-content {
+            border-radius: 10px;
+            background: #ffffff;
+          }
+
+          .modal-header {
+            background: #f1f5f9;
+            border-bottom: none;
+          }
+
+          .modal-title {
+            color: #1e3a8a;
+            font-weight: 600;
+          }
+
+          .form-control, .form-select {
+            border-radius: 5px;
+            padding: 0.75rem;
+            font-size: 0.9rem;
+            border: 1px solid #d1d5db;
+            transition: all 0.3s ease;
+          }
+
+          .form-control:hover, .form-select:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 0 5px rgba(59, 130, 246, 0.2);
+          }
+
+          .form-control:focus, .form-select:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 8px rgba(37, 99, 235, 0.3);
+            outline: none;
+          }
+
+          .form-label {
+            font-size: 0.9rem;
+            color: #374151;
+            font-weight: 500;
+          }
+
+          .modal-body p {
+            font-size: 1rem;
+            color: #374151;
+            text-align: center;
+          }
+
+          @media (max-width: 768px) {
+            .dashboard-card {
+              padding: 1.5rem;
+            }
+
+            h2 {
+              font-size: 1.8rem;
+            }
+
+            .table th, .table td {
+              padding: 0.75rem;
+              font-size: 0.85rem;
+            }
+
+            .btn-primary, .btn-danger, .btn-warning, .btn-secondary, .btn-success {
+              padding: 0.4rem 0.8rem;
+              font-size: 0.85rem;
+            }
+          }
+        `}
+      </style>
+      <div className="dashboard-card">
+        <h2>Admin Dashboard</h2>
+        {error && <div className="alert alert-danger">{error}</div>}
+        <button
+          className="btn btn-primary mb-3"
+          onClick={() => setShowAddModal(true)}
+        >
+          Add New Employee
+        </button>
+        <table className="table table-bordered">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Department</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {employees.map((employee) => (
+              <tr key={employee.email}>
+                <td>{employee.email}</td>
+                <td>{employee.name || '-'}</td>
+                <td>{employee.role || '-'}</td>
+                <td>{employee.department || '-'}</td>
+                <td>
+                  <button
+                    className="btn btn-warning me-2"
+                    onClick={() => openUpdateModal(employee)}
+                  >
+                    Update
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    onClick={() => openDeleteConfirmModal(employee.email)}
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Add Employee Modal */}
+        <div className={`modal ${showAddModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Add New Employee</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowAddModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <div className="mb-3">
+                  <label className="form-label">Email</label>
+                  <input
+                    type="email"
+                    name="email"
+                    className="form-control"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Name</label>
+                  <input
+                    type="text"
+                    name="name"
+                    className="form-control"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Role</label>
+                  <select
+                    name="role"
+                    className="form-select"
+                    value={formData.role}
+                    onChange={handleInputChange}
+                    required
+                  >
+                    <option value="">Select Role</option>
+                    <option value="Employee">Employee</option>
+                    <option value="HR">HR</option>
+                    <option value="Manager">Manager</option>
+                    <option value="IT Support">IT Support</option>
+                    <option value="Admin">Admin</option>
+                    <option value="Team Lead">Team Lead</option>
+                  </select>
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Gender</label>
+                  <select
+                    name="gender"
+                    className="form-select"
+                    value={formData.gender}
+                    onChange={handleInputChange}
+                    required
+                  >
+                    <option value="">Select Gender</option>
+                    <option value="1">Male</option>
+                    <option value="2">Female</option>
+                  </select>
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Department</label>
+                  <select
+                    name="department"
+                    className="form-select"
+                    value={formData.department}
+                    onChange={handleInputChange}
+                    required
+                  >
+                    <option value="">Select Department</option>
+                    <option value="1">Development</option>
+                    <option value="2">UI Design</option>
+                    <option value="3">Human Resource</option>
+                  </select>
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Password</label>
+                  <input
+                    type="password"
+                    name="password"
+                    className="form-control"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowAddModal(false)}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setShowAddConfirmModal(true);
+                  }}
+                >
+                  Add Employee
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Add Employee Confirmation Modal */}
+        <div className={`modal ${showAddConfirmModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Confirm Add Employee</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowAddConfirmModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>Are you sure you want to add this employee?</p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowAddConfirmModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleAddEmployee}
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Add Employee Success Modal */}
+        <div className={`modal ${showAddSuccessModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Success</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowAddSuccessModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>Employee added successfully!</p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-success"
+                  onClick={() => setShowAddSuccessModal(false)}
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Update Employee Modal */}
+        <div className={`modal ${showUpdateModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Update Employee</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowUpdateModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <div className="mb-3">
+                  <label className="form-label">Email</label>
+                  <input
+                    type="email"
+                    name="email"
+                    className="form-control"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    disabled
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Name</label>
+                  <input
+                    type="text"
+                    name="name"
+                    className="form-control"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Role</label>
+                  <select
+                    name="role"
+                    className="form-select"
+                    value={formData.role}
+                    onChange={handleInputChange}
+                    required
+                  >
+                    <option value="">Select Role</option>
+                    <option value="Employee">Employee</option>
+                    <option value="HR">HR</option>
+                    <option value="Manager">Manager</option>
+                    <option value="IT Support">IT Support</option>
+                    <option value="Admin">Admin</option>
+                    <option value="Team Lead">Team Lead</option>
+                  </select>
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Gender</label>
+                  <select
+                    name="gender"
+                    className="form-select"
+                    value={formData.gender}
+                    onChange={handleInputChange}
+                    required
+                  >
+                    <option value="">Select Gender</option>
+                    <option value="1">Male</option>
+                    <option value="2">Female</option>
+                  </select>
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Department</label>
+                  <select
+                    name="department"
+                    className="form-select"
+                    value={formData.department}
+                    onChange={handleInputChange}
+                    required
+                  >
+                    <option value="">Select Department</option>
+                    <option value="1">Development</option>
+                    <option value="2">UI Design</option>
+                  </select>
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Password</label>
+                  <input
+                    type="password"
+                    name="password"
+                    className="form-control"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowUpdateModal(false)}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setShowUpdateModal(false);
+                    setShowUpdateConfirmModal(true);
+                  }}
+                >
+                  Update Employee
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Update Employee Confirmation Modal */}
+        <div className={`modal ${showUpdateConfirmModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Confirm Update Employee</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowUpdateConfirmModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>Are you sure you want to update this employee?</p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowUpdateConfirmModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleUpdateEmployee}
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Update Employee Success Modal */}
+        <div className={`modal ${showUpdateSuccessModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Success</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowUpdateSuccessModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>Employee updated successfully!</p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-success"
+                  onClick={() => setShowUpdateSuccessModal(false)}
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Delete Employee Confirmation Modal */}
+        <div className={`modal ${showDeleteConfirmModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Confirm Delete Employee</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowDeleteConfirmModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>Are you sure you want to delete this employee?</p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowDeleteConfirmModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={handleDeleteEmployee}
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Delete Employee Success Modal */}
+        <div className={`modal ${showDeleteSuccessModal ? 'd-block' : 'd-none'}`} tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Success</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowDeleteSuccessModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>Employee deleted successfully!</p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-success"
+                  onClick={() => setShowDeleteSuccessModal(false)}
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AdminDashboard;
